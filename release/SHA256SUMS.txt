@@ -1,0 +1,4 @@
+601e6630e0190bfd92dab95c65707d9a691b2acf9184e62fff4b45f6c6fd456f  sevokecode-image-gen-installer-macos-arm64-v1.8.2.dmg
+d0fa06b5967fc96171e1501c379aa48fd2c9ffc21b2fe6fbd3706b53864ad62b  sevokecode-image-gen-installer-macos-x64-v1.8.2.dmg
+6ef1c461c278e17197a6c4e5c0b5c329228d4af3ce80d08d9cb65a7b9850f264  sevokecode-image-gen-macos-arm64-v1.8.2.zip
+aae5d189d0deaddcd3790b9dcaeff9faffbbeafac387f0a3de03fe1fb893907d  sevokecode-image-gen-macos-x64-v1.8.2.zip

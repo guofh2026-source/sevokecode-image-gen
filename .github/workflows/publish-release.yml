@@ -1,0 +1,245 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - release-v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        default: v1.8.2
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.id }} release assets
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-arm64
+            runner: macos-14
+            package_dir: sevokecode-image-gen-macos-arm64
+            build_script: build:package:macos-arm64
+          - id: macos-x64
+            runner: macos-15-intel
+            package_dir: sevokecode-image-gen-macos-x64
+            build_script: build:package:macos-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE_P12" ]; then
+            echo "Developer ID certificate not configured; building an ad-hoc signed DMG."
+            exit 0
+          fi
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          keychain="$RUNNER_TEMP/sevokecodes-signing.keychain-db"
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$certificate"
+          security create-keychain -p runner "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p runner "$keychain"
+          security import "$certificate" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k runner "$keychain"
+
+      - name: Build package and notarized DMG
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: npm run ${{ matrix.build_script }}
+
+      - name: Verify package and DMG
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          destination="$RUNNER_TEMP/sevokecode-image-gen-package"
+          mount="$RUNNER_TEMP/sevokecode-image-gen-dmg"
+          mkdir -p "$destination" "$mount"
+          ditto -x -k "release/sevokecode-image-gen-${{ matrix.id }}-v${version}.zip" "$destination"
+          node scripts/tests/packaged-e2e.mjs --package-root "$destination/${{ matrix.package_dir }}"
+          hdiutil attach "release/sevokecode-image-gen-installer-${{ matrix.id }}-v${version}.dmg" -nobrowse -readonly -mountpoint "$mount"
+          codesign --verify --deep --strict "$mount/Sevokecode Image Gen Installer.app"
+          hdiutil detach "$mount"
+
+      - name: Upload verified assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: sevokecode-image-gen-${{ matrix.id }}
+          path: |
+            release/sevokecode-image-gen-${{ matrix.id }}-v*.zip
+            release/sevokecode-image-gen-installer-${{ matrix.id }}-v*.dmg
+          if-no-files-found: error
+
+  assemble:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          path: verified-assets
+          merge-multiple: true
+      - run: npm ci
+      - run: npm run assemble:release -- --input-dir verified-assets
+      - name: Verify checksums
+        run: cd release && sha256sum -c SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sevokecode-image-gen-release-assets
+          path: release/
+          if-no-files-found: error
+
+  publish-github:
+    needs: assemble
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sevokecode-image-gen-release-assets
+          path: release
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${{ inputs.tag }}"
+          if [ -z "$release_tag" ]; then
+            release_tag="$(cat release-version.txt)"
+          fi
+          malformed_tag="v$release_tag"
+          if [ "$malformed_tag" != "$release_tag" ] && gh release view "$malformed_tag" >/dev/null 2>&1; then
+            gh release delete "$malformed_tag" --cleanup-tag --yes
+          fi
+          if ! gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release create "$release_tag" --target "$GITHUB_SHA" --title "$release_tag" --notes-file RELEASE_NOTES.md
+          else
+            gh release edit "$release_tag" --notes-file RELEASE_NOTES.md
+          fi
+          gh release upload "$release_tag" release/* --clobber
+      - name: Verify GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${{ inputs.tag }}"
+          if [ -z "$release_tag" ]; then
+            release_tag="$(cat release-version.txt)"
+          fi
+          mkdir downloaded
+          gh release download "$release_tag" --dir downloaded
+          cd downloaded
+          sha256sum -c SHA256SUMS.txt
+
+  publish-gitee:
+    needs: assemble
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sevokecode-image-gen-release-assets
+          path: release
+      - name: Publish Gitee release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          RELEASE_TAG="${{ inputs.tag }}"
+          if [ -z "$RELEASE_TAG" ]; then
+            RELEASE_TAG="$(cat release-version.txt)"
+          fi
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "::error title=Missing Gitee token::GITEE_TOKEN must be configured before publishing a release."
+            exit 1
+          fi
+          api="https://gitee.com/api/v5/repos/sevokecodes/sevokecode-image-gen"
+          release_id="$(curl -fsS "$api/releases/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN" | jq -r '.id // empty' || true)"
+          public_tag="$(curl -fsS "$api/releases/tags/$RELEASE_TAG" | jq -r '.tag_name // empty' || true)"
+          if [ -n "$release_id" ] && [ "$public_tag" != "$RELEASE_TAG" ]; then
+            curl -fsS -X DELETE "$api/releases/$release_id?access_token=$GITEE_TOKEN" >/dev/null
+            release_id=""
+          fi
+          if [ -z "$release_id" ]; then
+            create_response="$(curl -fsS -X POST "$api/releases" \
+              --form "access_token=$GITEE_TOKEN" \
+              --form "tag_name=$RELEASE_TAG" \
+              --form "target_commitish=$GITHUB_SHA" \
+              --form "name=$RELEASE_TAG" \
+              --form "body=<RELEASE_NOTES.md" \
+              --form "prerelease=false")"
+            printf '%s' "$create_response" \
+              | jq -e --arg tag "$RELEASE_TAG" '.id and .tag_name == $tag and .prerelease == false' >/dev/null
+            release_id="$(printf '%s' "$create_response" | jq -r '.id // empty')"
+          fi
+          test -n "$release_id"
+          for asset in release/*; do
+            asset_name="$(basename "$asset")"
+            curl -fsS "$api/releases/$release_id/attach_files?access_token=$GITEE_TOKEN&per_page=100" \
+              | jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .id' \
+              | while read -r asset_id; do
+                  curl -fsS -X DELETE \
+                    "$api/releases/$release_id/attach_files/$asset_id?access_token=$GITEE_TOKEN" >/dev/null
+                done
+            curl -fsS -X POST "$api/releases/$release_id/attach_files" \
+              --form "access_token=$GITEE_TOKEN" \
+              --form "file=@$asset" >/dev/null
+          done
+          curl -fsS -X PATCH "$api/releases/$release_id" \
+            --data-urlencode "access_token=$GITEE_TOKEN" \
+            --data-urlencode "tag_name=$RELEASE_TAG" \
+            --data-urlencode "name=$RELEASE_TAG" \
+            --data-urlencode "body@RELEASE_NOTES.md" \
+            --data-urlencode "prerelease=false" \
+            | jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .prerelease == false' >/dev/null
+      - name: Verify Gitee release assets
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          RELEASE_TAG="${{ inputs.tag }}"
+          if [ -z "$RELEASE_TAG" ]; then
+            RELEASE_TAG="$(cat release-version.txt)"
+          fi
+          api="https://gitee.com/api/v5/repos/sevokecodes/sevokecode-image-gen"
+          if [ -n "$GITEE_TOKEN" ]; then
+            curl -fsS "$api/releases/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN" > release.json
+          else
+            curl -fsS "$api/releases/tags/$RELEASE_TAG" > release.json
+          fi
+          jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .prerelease == false' release.json >/dev/null
+          for asset in release/*; do
+            jq -e --arg name "$(basename "$asset")" '.assets[] | select(.name == $name)' release.json >/dev/null
+          done
+          for attempt in $(seq 1 12); do
+            curl -fsS "$api/releases/tags/$RELEASE_TAG" > public-release.json
+            curl -fsS "$api/releases/latest" > latest-release.json
+            if jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .prerelease == false' public-release.json >/dev/null \
+              && jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .prerelease == false' latest-release.json >/dev/null; then
+              for asset in release/*; do
+                jq -e --arg name "$(basename "$asset")" '.assets[] | select(.name == $name)' public-release.json >/dev/null
+              done
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Gitee did not expose $RELEASE_TAG as the latest public release." >&2
+          exit 1

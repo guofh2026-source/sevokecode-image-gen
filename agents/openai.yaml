@@ -1,0 +1,4 @@
+interface:
+  display_name: "sevokecodes image gen"
+  short_description: "Direct native image generation and editing"
+  default_prompt: "Use $sevokecode-image-gen to generate or edit one image by passing my prompt verbatim through the installed native executable."

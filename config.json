@@ -1,0 +1,7 @@
+{
+  "apiKey": "",
+  "model": "gpt-image-2",
+  "timeoutMs": 600000,
+  "proxyUrl": "",
+  "defaultOutputDir": ""
+}

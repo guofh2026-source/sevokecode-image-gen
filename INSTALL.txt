@@ -1,0 +1,20 @@
+Sevokecode Image Gen installation for macOS
+
+Download the DMG for your Mac from the latest Gitee release:
+  Apple Silicon: sevokecode-image-gen-installer-macos-arm64-v*.dmg
+  Intel:         sevokecode-image-gen-installer-macos-x64-v*.dmg
+
+Open the DMG, launch Sevokecode Image Gen Installer, enter the API Key, and click Install.
+The installer downloads the matching package from the latest Gitee release, verifies
+its SHA-256 checksum, installs it into Codex, and writes config.json. It does not call
+the image API during installation or change Codex sandbox, approval, or network settings.
+
+The installed native executable is mode 0755, config.json is mode 0600, and the
+default output directory is created and checked for writability. Both installers
+expose the matching native architecture at the same stable bin/sevokecode-image-gen
+path, so Codex never needs to detect or choose a CPU architecture.
+Release ZIPs also include one architecture-named compatibility symlink for
+already-downloaded v1.8.0 DMG installers. It is never copied into the Skill.
+
+No terminal, Node.js, Python, OpenAI SDK, or administrator permission is required.
+Restart Codex Desktop after installation.

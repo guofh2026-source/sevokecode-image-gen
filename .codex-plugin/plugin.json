@@ -1,0 +1,21 @@
+{
+  "name": "sevokecode-image-gen",
+  "version": "1.8.2",
+  "description": "Native local image generation and editing through the configured OpenAI Images API.",
+  "author": {
+    "name": "Sevokecode"
+  },
+  "skills": "./",
+  "interface": {
+    "displayName": "Sevokecode Image Gen",
+    "shortDescription": "Native image generation and editing",
+    "longDescription": "Uses a bundled native executable to send one streaming request to the fixed Images API and return one generated or edited image.",
+    "developerName": "Sevokecode",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "defaultPrompt": [
+      "Generate an image from my prompt.",
+      "Edit this local image using my prompt."
+    ]
+  }
+}

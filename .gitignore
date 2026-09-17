@@ -1,0 +1,16 @@
+node_modules/
+.npm-cache/
+build/
+image-outputs/
+scripts/tests/tmp/
+tmp/
+*.local.json
+.DS_Store
+release/*.zip
+release/*.dmg
+release/sevokecode-image-gen/
+release/sevokecode-image-gen-macos-arm64/
+release/sevokecode-image-gen-macos-x64/
+bin/sevokecode-image-gen-installer-*
+bin/sevokecode-image-gen-macos-arm64
+bin/sevokecode-image-gen-macos-x64

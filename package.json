@@ -1,0 +1,32 @@
+{
+  "name": "sevokecode-image-gen",
+  "version": "1.8.2",
+  "private": true,
+  "description": "Standalone OpenAI Images HTTP wrapper for generation and editing.",
+  "type": "module",
+  "bin": {
+    "sevokecode-image-gen": "./scripts/sevokecode-image-gen.mjs"
+  },
+  "scripts": {
+    "test": "node --test scripts/tests/*.test.mjs",
+    "test:package-e2e": "node scripts/tests/run-packaged-e2e.mjs",
+    "bundle:bin:mac": "esbuild scripts/sevokecode-image-gen.mjs --bundle --platform=node --format=cjs --target=node22 --outfile=build/sevokecode-image-gen-mac.cjs",
+    "build:bin:macos-arm64": "npm run bundle:bin:mac && pkg --compress GZip --targets node22-macos-arm64 --output bin/sevokecode-image-gen-macos-arm64 build/sevokecode-image-gen-mac.cjs",
+    "build:bin:macos-x64": "npm run bundle:bin:mac && pkg --compress GZip --targets node22-macos-x64 --output bin/sevokecode-image-gen-macos-x64 build/sevokecode-image-gen-mac.cjs",
+    "build:installer:macos-arm64": "node scripts/build-macos-installer.mjs --platform macos-arm64",
+    "build:installer:macos-x64": "node scripts/build-macos-installer.mjs --platform macos-x64",
+    "build:package:macos-arm64": "npm run build:bin:macos-arm64 && node scripts/create-release.mjs --platform macos-arm64 && npm run build:installer:macos-arm64",
+    "build:package:macos-x64": "npm run build:bin:macos-x64 && node scripts/create-release.mjs --platform macos-x64 && npm run build:installer:macos-x64",
+    "build:release": "npm run build:bin:macos-arm64 && npm run build:bin:macos-x64 && node scripts/create-release.mjs && npm run build:installer:macos-arm64 && npm run build:installer:macos-x64",
+    "assemble:release": "node scripts/assemble-release.mjs"
+  },
+  "dependencies": {
+    "undici": "^6.27.0"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^5.16.1",
+    "archiver": "^7.0.1",
+    "esbuild": "^0.25.0"
+  },
+  "pkg": {}
+}

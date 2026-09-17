@@ -1,0 +1,50 @@
+name: Packaged native E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  packaged-e2e:
+    name: ${{ matrix.id }} package and DMG
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-arm64
+            runner: macos-14
+            package_dir: sevokecode-image-gen-macos-arm64
+            build_script: build:package:macos-arm64
+          - id: macos-x64
+            runner: macos-15-intel
+            package_dir: sevokecode-image-gen-macos-x64
+            build_script: build:package:macos-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run ${{ matrix.build_script }}
+      - name: Verify package
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          destination="$RUNNER_TEMP/sevokecode-image-gen-package"
+          mkdir -p "$destination"
+          ditto -x -k "release/sevokecode-image-gen-${{ matrix.id }}-v${version}.zip" "$destination"
+          node scripts/tests/packaged-e2e.mjs --package-root "$destination/${{ matrix.package_dir }}"
+      - name: Verify DMG
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          dmg="release/sevokecode-image-gen-installer-${{ matrix.id }}-v${version}.dmg"
+          mount="$RUNNER_TEMP/sevokecode-image-gen-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
+          codesign --verify --deep --strict "$mount/Sevokecode Image Gen Installer.app"
+          test -x "$mount/Sevokecode Image Gen Installer.app/Contents/MacOS/SevokecodeImageGenInstaller"
+          hdiutil detach "$mount"
