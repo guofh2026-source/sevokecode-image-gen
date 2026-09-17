@@ -6,7 +6,7 @@ import process from "node:process";
 
 import { Agent, ProxyAgent, fetch } from "undici";
 
-export const DEFAULT_BASE_URL = "https://sevoke.duckdns.org/v1";
+export const DEFAULT_BASE_URL = "https://api.sevoke.com/v1";
 export const DEFAULT_GENERATE_SIZE = "1024x1024";
 export const DEFAULT_EDIT_SIZE = "auto";
 export const DEFAULT_TIMEOUT_MS = 600000;
